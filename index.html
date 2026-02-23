@@ -3,130 +3,233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Algebra Reactor - Total Stability</title>
+    <title>Algebra Reactor - Full Version</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #0f172a; font-family: system-ui, -apple-system, sans-serif; }
+        body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #0f172a; font-family: sans-serif; }
         #root { width: 100vw; height: 100vh; }
-        .card-shadow { box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // Gestione sicura di Framer Motion
-        const MotionLib = window.FramerMotion || window.Motion;
-        const { motion, AnimatePresence } = MotionLib;
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
+        const { motion, AnimatePresence, useMotionValue } = window.FramerMotion || window.Motion;
 
+        // --- Configurazione Colori Originali ---
         const LHS_BG = '#E3F2FD'; const RHS_BG = '#FFFDE7';
-        const LHS_CARD_BG = '#3B82F6'; const RHS_CARD_BG = '#EAB308';
+        const LHS_CARD_BG = '#2196F3'; const RHS_CARD_BG = '#FBC02D';
+        const generateId = () => Math.random().toString(36).substr(2, 9);
 
-        const formatTerm = (coeff, hasVar, showSign = true) => {
-            if (coeff === 0) return "0";
-            const abs = Math.abs(coeff);
-            const sign = coeff >= 0 ? "+" : "-";
-            const v = hasVar ? "x" : "";
-            const c = (abs === 1 && hasVar) ? "" : abs;
-            return `${showSign ? sign : (coeff < 0 ? "-" : "")}${c}${v}`;
+        // --- Logica di Formattazione Termini (Tua originale) ---
+        const formatTerm = (coefficient, hasVariable, showSign = true) => {
+            const absCoeff = Math.abs(coefficient);
+            const sign = coefficient >= 0 ? '+' : '-';
+            const variablePart = hasVariable ? 'x' : '';
+            let coeffPart = absCoeff.toString();
+            if (hasVariable && absCoeff === 1) coeffPart = '';
+            if (coefficient === 0) return '0';
+            return `${showSign ? sign : (coefficient < 0 ? '-' : '')}${coeffPart}${variablePart}`;
+        };
+
+        const getEquationString = (terms) => {
+            const lhs = terms.filter(t => t.side === 'lhs');
+            const rhs = terms.filter(t => t.side === 'rhs');
+            const formatSide = (sideTerms) => {
+                if (sideTerms.length === 0) return '0';
+                return sideTerms.map((t, i) => {
+                    const str = formatTerm(t.coefficient, t.hasVariable, i > 0);
+                    return i > 0 ? ` ${str.startsWith('-') ? '- ' + str.substring(1) : '+ ' + str.substring(1)}` : str;
+                }).join('');
+            };
+            return `${formatSide(lhs)} = ${formatSide(rhs)}`;
+        };
+
+        // --- Generatore Livelli Originale ---
+        const generateLevel = (difficulty) => {
+            const scale = (val) => Math.round(val * difficulty);
+            let finalCoeff = difficulty >= 1.2 ? [2,3,4,5,-2,-3,-4][Math.floor(Math.random()*7)] : 1;
+            const answer = Math.floor(Math.random() * (scale(5) * 2 + 1)) - scale(5);
+            const A = Math.floor(Math.random() * (scale(6) - 2 + 1)) + 2;
+            const B = A - finalCoeff;
+            const targetConstantDiff = finalCoeff * answer;
+            const C1 = Math.floor(Math.random() * (scale(10) * 2 + 1)) - scale(10);
+            const C2 = C1 + targetConstantDiff;
+
+            return [
+                { id: generateId(), coefficient: A, hasVariable: true, side: 'lhs' },
+                { id: generateId(), coefficient: B, hasVariable: true, side: 'rhs' },
+                { id: generateId(), coefficient: C1, hasVariable: false, side: 'lhs' },
+                { id: generateId(), coefficient: C2, hasVariable: false, side: 'rhs' }
+            ];
         };
 
         function App() {
-            const [terms, setTerms] = useState([
-                { id: '1', coefficient: 1, hasVariable: true, side: 'lhs' },
-                { id: '2', coefficient: 4, hasVariable: false, side: 'lhs' },
-                { id: '3', coefficient: 9, hasVariable: false, side: 'rhs' }
-            ]);
+            const [terms, setTerms] = useState([]);
             const [score, setScore] = useState(0);
-            const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, val: '' });
+            const [solvedCount, setSolvedCount] = useState(0);
+            const [gameWon, setGameWon] = useState(false);
+            const [canDivide, setCanDivide] = useState(null);
+            const difficulty = 1 + Math.floor(solvedCount / 2) * 0.2;
+
+            const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, inputValue: '' });
+            const [divModal, setDivModal] = useState({ isOpen: false, divisor: 1, dividend: 0, divIn: '', resIn: '' });
+
+            useEffect(() => { setTerms(generateLevel(1)); }, []);
+
+            // --- Check Condizioni Vittoria / Divisione ---
+            useEffect(() => {
+                if (gameWon) return;
+                const lhs = terms.filter(t => t.side === 'lhs');
+                const rhs = terms.filter(t => t.side === 'rhs');
+                if (lhs.length === 1 && rhs.length === 1) {
+                    const t1 = lhs[0]; const t2 = rhs[0];
+                    let vTerm = null, cTerm = null;
+                    if (t1.hasVariable && !t2.hasVariable) { vTerm = t1; cTerm = t2; }
+                    else if (!t1.hasVariable && t2.hasVariable) { vTerm = t2; cTerm = t1; }
+
+                    if (vTerm && cTerm) {
+                        if (vTerm.coefficient === 1) {
+                            setGameWon(true); setScore(s => s + 10); setSolvedCount(c => c + 1);
+                        } else {
+                            setCanDivide({ divisor: vTerm.coefficient, dividend: cTerm.coefficient });
+                        }
+                    }
+                } else { setCanDivide(null); }
+            }, [terms]);
 
             const handleDragEnd = (term, info, element) => {
                 const center = window.innerWidth / 2;
                 const newSide = info.point.x < center ? 'lhs' : 'rhs';
-                
                 const rect = element.getBoundingClientRect();
+                
                 const overlap = terms.find(t => {
                     if (t.id === term.id || t.side !== newSide || t.hasVariable !== term.hasVariable) return false;
                     const target = document.getElementById(`card-${t.id}`)?.getBoundingClientRect();
-                    if (!target) return false;
-                    return !(rect.right < target.left || rect.left > target.right || rect.bottom < target.top || rect.top > target.bottom);
+                    return target && !(rect.right < target.left || rect.left > target.right || rect.bottom < target.top || rect.top > target.bottom);
                 });
 
                 if (overlap) {
-                    setModal({ isOpen: true, termA: {...term, coefficient: newSide !== term.side ? -term.coefficient : term.coefficient, side: newSide}, termB: overlap, val: '' });
+                    setModal({ isOpen: true, termA: {...term, coefficient: newSide !== term.side ? -term.coefficient : term.coefficient, side: newSide}, termB: overlap, inputValue: '' });
                 } else if (newSide !== term.side) {
                     setTerms(prev => prev.map(t => t.id === term.id ? { ...t, side: newSide, coefficient: -t.coefficient } : t));
                 }
             };
 
-            const solveMerge = (e) => {
+            const handleMerge = (e) => {
                 e.preventDefault();
-                const res = parseInt(modal.val);
-                if (res === (modal.termA.coefficient + modal.termB.coefficient)) {
-                    setTerms(prev => {
-                        const filtered = prev.filter(t => t.id !== modal.termA.id && t.id !== modal.termB.id);
-                        return [...filtered, { id: Math.random().toString(), coefficient: res, hasVariable: modal.termA.hasVariable, side: modal.termA.side }];
-                    });
+                const sum = modal.termA.coefficient + modal.termB.coefficient;
+                if (parseInt(modal.inputValue) === sum) {
+                    setTerms(prev => [...prev.filter(t => t.id !== modal.termA.id && t.id !== modal.termB.id), 
+                                     { id: generateId(), coefficient: sum, hasVariable: modal.termA.hasVariable, side: modal.termA.side }]);
                     setModal({ isOpen: false });
-                    setScore(s => s + 5);
+                }
+            };
+
+            const handleDivision = (e) => {
+                e.preventDefault();
+                if (parseInt(divModal.divIn) === divModal.divisor && parseInt(divModal.resIn) === (divModal.dividend / divModal.divisor)) {
+                    setTerms(prev => prev.map(t => ({ ...t, coefficient: t.hasVariable ? 1 : (divModal.dividend / divModal.divisor) })));
+                    setDivModal({ isOpen: false });
                 }
             };
 
             return (
-                <div className="relative w-full h-full overflow-hidden">
-                    {/* Sfondo Bi-colore */}
+                <div className="relative w-full h-full overflow-hidden select-none">
                     <div className="absolute inset-0 flex">
-                        <div className="w-1/2 h-full" style={{backgroundColor: LHS_BG}} />
-                        <div className="w-1/2 h-full" style={{backgroundColor: RHS_BG}} />
+                        <div className="w-1/2 h-full" style={{ backgroundColor: LHS_BG }} />
+                        <div className="w-1/2 h-full" style={{ backgroundColor: RHS_BG }} />
                     </div>
 
-                    {/* Uguale Centrale */}
-                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/10 flex items-center justify-center">
-                        <div className="bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold text-slate-400 border-2 border-slate-100">=</div>
-                    </div>
-
-                    {/* UI Superiore */}
-                    <div className="absolute top-8 w-full flex flex-col items-center z-50 pointer-events-none">
-                        <div className="bg-slate-900 text-white px-6 py-2 rounded-2xl shadow-2xl flex items-center gap-3">
-                            <span className="text-xl">🏆</span>
-                            <span className="font-black tracking-tight">SCORE: {score}</span>
+                    {/* UI Headers */}
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+                        <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-md font-bold text-slate-800">
+                            Score: {score} | Diff: {difficulty.toFixed(1)}x
+                        </div>
+                        <div className="bg-white px-6 py-2 rounded-xl shadow-lg border border-slate-200 font-mono font-bold text-xl">
+                            {getEquationString(terms)}
                         </div>
                     </div>
 
-                    {terms.map(t => (
-                        <Card key={t.id} term={t} onDragEnd={handleDragEnd} />
+                    {/* Center Equal */}
+                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/10 flex items-center justify-center">
+                        <div className="bg-slate-800 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold text-xl shadow-xl">=</div>
+                    </div>
+
+                    {/* Cards */}
+                    {terms.map(term => (
+                        <DraggableCard key={term.id} term={term} onDragEnd={handleDragEnd} />
                     ))}
 
+                    {/* Division Button */}
+                    {canDivide && !gameWon && (
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-20 z-30">
+                            <button onClick={() => setDivModal({ ...divModal, isOpen: true, divisor: canDivide.divisor, dividend: canDivide.dividend })}
+                                    className="bg-purple-600 text-white px-8 py-3 rounded-full font-bold shadow-2xl border-4 border-white animate-bounce">
+                                DIVIDI ORA!
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Win Modal */}
                     <AnimatePresence>
-                        {modal.isOpen && (
-                            <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-[100] bg-slate-900/80 backdrop-blur flex items-center justify-center p-4">
-                                <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-xs text-center border-4 border-blue-100">
-                                    <h2 className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-4">Reattore Nucleare</h2>
-                                    <div className="text-3xl font-black text-blue-600 mb-6 bg-blue-50 py-4 rounded-2xl">
-                                        {formatTerm(modal.termA.coefficient, modal.termA.hasVariable)} {modal.termB.coefficient >= 0 ? "+" : ""} {formatTerm(modal.termB.coefficient, modal.termB.hasVariable, false)}
-                                    </div>
-                                    <form onSubmit={solveMerge}>
-                                        <input autoFocus type="number" className="w-full bg-slate-100 border-none p-5 rounded-2xl mb-4 text-center text-4xl font-black focus:ring-4 focus:ring-blue-500/20 outline-none" 
-                                            value={modal.val} onChange={e => setModal({...modal, val: e.target.value})} />
-                                        <button className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold text-xl shadow-xl hover:bg-blue-700 transition-all active:scale-95">FUSION</button>
-                                    </form>
+                        {gameWon && (
+                            <motion.div initial={{scale:0}} animate={{scale:1}} className="absolute inset-0 z-[100] bg-green-500/90 flex items-center justify-center text-white">
+                                <div className="text-center p-10 bg-white rounded-[3rem] shadow-2xl">
+                                    <h1 className="text-4xl font-black text-green-600 mb-2">RISOLTA!</h1>
+                                    <p className="text-slate-500 mb-6">Valore trovato: x = {terms.find(t => !t.hasVariable)?.coefficient}</p>
+                                    <button onClick={() => { setGameWon(false); setTerms(generateLevel(difficulty)); }} 
+                                            className="bg-green-500 text-white px-10 py-4 rounded-2xl font-bold text-xl shadow-lg">PROSSIMA EQUAZIONE</button>
                                 </div>
                             </motion.div>
+                        )}
+
+                        {/* Merge Modal */}
+                        {modal.isOpen && (
+                            <div className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                                <motion.div initial={{y:50}} animate={{y:0}} className="bg-white p-8 rounded-3xl shadow-2xl w-80 text-center">
+                                    <h2 className="font-bold text-slate-400 mb-4 uppercase">Combina i termini</h2>
+                                    <div className="text-2xl font-black text-blue-600 mb-4">
+                                        {formatTerm(modal.termA.coefficient, modal.termA.hasVariable)} + {formatTerm(modal.termB.coefficient, modal.termB.hasVariable)}
+                                    </div>
+                                    <form onSubmit={handleMerge}>
+                                        <input autoFocus type="number" className="w-full bg-slate-100 p-4 rounded-xl text-center text-2xl font-bold mb-4" 
+                                               value={modal.inputValue} onChange={e => setModal({...modal, inputValue: e.target.value})} />
+                                        <button className="w-full bg-blue-500 text-white py-4 rounded-xl font-bold">MERGE</button>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+
+                        {/* Division Modal */}
+                        {divModal.isOpen && (
+                            <div className="absolute inset-0 z-[100] bg-purple-900/60 backdrop-blur-sm flex items-center justify-center">
+                                <motion.div initial={{scale:0.9}} animate={{scale:1}} className="bg-white p-8 rounded-3xl shadow-2xl w-80">
+                                    <h2 className="text-center font-bold mb-4">Isola la x</h2>
+                                    <form onSubmit={handleDivision} className="space-y-4">
+                                        <input type="number" placeholder="Dividi per..." className="w-full p-3 bg-slate-100 rounded-lg text-center font-bold"
+                                               value={divModal.divIn} onChange={e => setDivModal({...divModal, divIn: e.target.value})} />
+                                        <input type="number" placeholder="Risultato finale..." className="w-full p-3 bg-slate-100 rounded-lg text-center font-bold"
+                                               value={divModal.resIn} onChange={e => setDivModal({...divModal, resIn: e.target.value})} />
+                                        <button className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold">RISOLVI</button>
+                                    </form>
+                                </motion.div>
+                            </div>
                         )}
                     </AnimatePresence>
                 </div>
             );
         }
 
-        function Card({ term, onDragEnd }) {
-            const isL = term.side === 'lhs';
-            const pos = useMemo(() => ({
-                x: isL ? 60 + Math.random()*80 : window.innerWidth - 160 - Math.random()*80,
+        function DraggableCard({ term, onDragEnd }) {
+            const isLHS = term.side === 'lhs';
+            const initialPos = useMemo(() => ({
+                x: isLHS ? 80 + Math.random()*100 : window.innerWidth - 180 - Math.random()*100,
                 y: 150 + Math.random() * (window.innerHeight - 300)
             }), [term.side]);
 
@@ -134,11 +237,11 @@
                 <motion.div
                     id={`card-${term.id}`}
                     drag dragMomentum={false}
-                    initial={{ x: pos.x, y: pos.y, scale: 0 }}
-                    animate={{ x: pos.x, y: pos.y, scale: 1, backgroundColor: isL ? LHS_CARD_BG : RHS_CARD_BG }}
-                    whileDrag={{ scale: 1.1, zIndex: 100 }}
+                    initial={{ x: initialPos.x, y: initialPos.y, scale: 0 }}
+                    animate={{ x: initialPos.x, y: initialPos.y, scale: 1, backgroundColor: isLHS ? LHS_CARD_BG : RHS_CARD_BG }}
+                    whileDrag={{ zIndex: 50, scale: 1.1 }}
                     onDragEnd={(e, info) => onDragEnd(term, info, e.target)}
-                    className="absolute w-24 h-24 rounded-3xl card-shadow flex items-center justify-center text-white text-3xl font-black cursor-grab active:cursor-grabbing border-b-8 border-black/20"
+                    className="absolute w-24 h-24 rounded-2xl shadow-xl flex items-center justify-center text-white text-2xl font-bold cursor-grab active:cursor-grabbing border-4 border-white/20"
                 >
                     {formatTerm(term.coefficient, term.hasVariable, false)}
                 </motion.div>
