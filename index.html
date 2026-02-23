@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Algebra Reactor - Sunny Edition</title>
+    <title>Algebra Reactor - Challenger Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #f8fafc; font-family: system-ui, sans-serif; }
         #root { width: 100vw; height: 100vh; }
-        .glass-clean { 
-            background: rgba(255, 255, 255, 0.8); 
-            backdrop-filter: blur(4px); 
-            border: 2px solid rgba(255,255,255,1); 
-        }
+        .glass-clean { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(6px); border: 2px solid white; }
         .card-shadow { box-shadow: 0 8px 20px -4px rgba(0,0,0,0.15); }
+        .score-shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; color: #ef4444 !important; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
     </style>
 </head>
 <body>
@@ -27,12 +25,8 @@
         const { useState, useEffect, useMemo } = React;
         const { motion, AnimatePresence } = window.FramerMotion || window.Motion;
 
-        // Palette Colori Rilassanti
-        const LHS_BG = '#E0F7FA'; // Azzurro pastello
-        const RHS_BG = '#FFF9C4'; // Giallo pastello
-        const LHS_CARD = '#4FC3F7'; // Blu vivace
-        const RHS_CARD = '#FFD54F'; // Giallo ambra
-        
+        const LHS_BG = '#E0F7FA'; const RHS_BG = '#FFF9C4';
+        const LHS_CARD = '#4FC3F7'; const RHS_CARD = '#FFD54F';
         const generateId = () => Math.random().toString(36).substr(2, 9);
 
         const formatForCard = (coeff, hasVar) => {
@@ -70,11 +64,19 @@
 
         function App() {
             const [terms, setTerms] = useState([]);
+            const [score, setScore] = useState(0);
+            const [shakeScore, setShakeScore] = useState(false);
             const [gameWon, setGameWon] = useState(false);
             const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, val: '' });
             const [divModal, setDivModal] = useState({ isOpen: false, divisor: 1, dividend: 0, dIn: '', rIn: '' });
 
             useEffect(() => { setTerms(generateLevel()); }, []);
+
+            const triggerMalus = (amount) => {
+                setScore(prev => Math.max(0, prev - amount));
+                setShakeScore(true);
+                setTimeout(() => setShakeScore(false), 500);
+            };
 
             const equationString = useMemo(() => {
                 const lhs = terms.filter(t => t.side === 'lhs');
@@ -95,6 +97,7 @@
                 const v = terms.find(t => t.hasVariable);
                 if (terms.length === 2 && v?.coefficient === 1 && !gameWon) {
                     setGameWon(true);
+                    setScore(prev => prev + 50); // Bonus vittoria
                 }
             }, [terms]);
 
@@ -122,18 +125,19 @@
 
             return (
                 <div className="relative w-full h-full overflow-hidden">
-                    {/* Sfondi Rilassanti */}
                     <div className="absolute inset-0 flex">
                         <div className="w-1/2 h-full" style={{backgroundColor: LHS_BG}} />
                         <div className="w-1/2 h-full" style={{backgroundColor: RHS_BG}} />
                     </div>
 
-                    {/* Uguale Centrale Morbido */}
-                    <div className="absolute left-1/2 inset-y-0 w-1 bg-white/40 flex items-center justify-center pointer-events-none">
-                        <div className="bg-white text-slate-400 w-12 h-12 rounded-full flex items-center justify-center font-bold shadow-sm border-2 border-slate-100 text-2xl">=</div>
+                    {/* SCORE UI */}
+                    <div className="absolute top-4 right-6 z-[70]">
+                        <div className={`bg-white/90 backdrop-blur px-6 py-2 rounded-2xl shadow-md border border-white transition-all ${shakeScore ? 'score-shake' : ''}`}>
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter block leading-none">Punti</span>
+                            <span className="text-2xl font-black text-slate-700">{score}</span>
+                        </div>
                     </div>
 
-                    {/* Equazione Top Nuvoletta */}
                     <div className="absolute top-8 w-full flex flex-col items-center z-[60] pointer-events-none px-4 text-center">
                         <div className="bg-white/80 backdrop-blur px-10 py-4 rounded-3xl shadow-lg border border-white">
                             <span className="text-3xl font-black font-mono tracking-tight text-slate-700 italic">
@@ -144,7 +148,10 @@
 
                     {terms.map(t => ( <Card key={t.id} term={t} onDragEnd={handleDragEnd} colors={{lhs: LHS_CARD, rhs: RHS_CARD}} /> ))}
 
-                    {/* Divisione UI */}
+                    <div className="absolute left-1/2 inset-y-0 w-1 bg-white/40 flex items-center justify-center pointer-events-none">
+                        <div className="bg-white text-slate-300 w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-sm border-2 border-slate-50 text-xl">=</div>
+                    </div>
+
                     <AnimatePresence>
                         {canDivide && (
                             <motion.button initial={{scale:0}} animate={{scale:1}} exit={{scale:0}}
@@ -156,18 +163,18 @@
                         )}
                     </AnimatePresence>
 
-                    {/* Modale Divisione Trasparente */}
+                    {/* Divisione con Malus */}
                     <AnimatePresence>
                         {divModal.isOpen && (
-                            <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 pointer-events-none bg-white/10 backdrop-blur-[2px]">
-                                <motion.div initial={{y:100, opacity:0}} animate={{y:0, opacity:1}} className="glass-clean p-10 rounded-[4rem] shadow-2xl w-full max-w-sm text-center pointer-events-auto border-4 border-white">
-                                    <h2 className="text-2xl font-black mb-2 text-slate-700 tracking-tight">Dividi tutto per {divModal.divisor}</h2>
-                                    <p className="text-xs font-bold text-slate-400 mb-8 uppercase tracking-widest italic">Per isolare la x</p>
-                                    <div className="space-y-6 mb-8">
-                                        <input type="number" placeholder="Divisore" className="w-full p-5 rounded-3xl border-2 border-slate-100 text-center text-2xl font-bold bg-white outline-none focus:border-green-400 transition-colors"
+                            <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 pointer-events-none bg-white/5 backdrop-blur-[1px]">
+                                <motion.div initial={{y:50}} animate={{y:0}} className="glass-clean p-10 rounded-[4rem] shadow-2xl w-full max-w-sm text-center pointer-events-auto border-4 border-white">
+                                    <h2 className="text-2xl font-black mb-1 text-slate-700">Dividi per {divModal.divisor}</h2>
+                                    <p className="text-[10px] font-bold text-red-400 mb-6 uppercase tracking-widest leading-none">Attento: Errore = -20 Punti!</p>
+                                    <div className="space-y-4 mb-8">
+                                        <input type="number" placeholder="Divisore" className="w-full p-4 rounded-2xl border-2 border-slate-100 text-center text-xl font-bold bg-white outline-none"
                                                value={divModal.dIn} onChange={e => setDivModal({...divModal, dIn: e.target.value})} />
                                         <div className="flex items-center justify-center text-4xl font-black text-green-500">
-                                            <span className="mr-3 italic">x =</span>
+                                            <span className="mr-2 italic">x =</span>
                                             <input type="number" placeholder="?" className="w-24 text-center bg-transparent border-b-4 border-green-500 outline-none"
                                                    value={divModal.rIn} onChange={e => setDivModal({...divModal, rIn: e.target.value})} />
                                         </div>
@@ -176,18 +183,19 @@
                                         if(parseInt(divModal.dIn) === divModal.divisor && parseInt(divModal.rIn) === (divModal.dividend / divModal.divisor)) {
                                             setTerms(prev => prev.map(t => ({...t, coefficient: t.hasVariable ? 1 : (divModal.dividend / divModal.divisor)})));
                                             setDivModal({isOpen:false});
-                                        } else { alert("Riprova i calcoli! " + divModal.dividend + " / " + divModal.divisor); }
-                                    }} className="w-full bg-green-500 text-white py-5 rounded-3xl font-black text-xl shadow-lg hover:bg-green-600 transition-colors">FINITO!</button>
+                                        } else { triggerMalus(20); }
+                                    }} className="w-full bg-green-500 text-white py-5 rounded-3xl font-black text-xl shadow-lg">CONFERMA</button>
                                 </motion.div>
                             </div>
                         )}
                     </AnimatePresence>
 
-                    {/* Modale Fusion */}
+                    {/* Fusion con Malus */}
                     <AnimatePresence>
                         {modal.isOpen && (
-                            <div className="absolute inset-0 z-[100] bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                            <div className="absolute inset-0 z-[100] bg-white/10 backdrop-blur-sm flex items-center justify-center">
                                 <motion.div initial={{scale:0.8}} animate={{scale:1}} className="bg-white p-10 rounded-[3rem] shadow-2xl w-80 text-center border-4 border-blue-50">
+                                    <p className="text-[10px] font-bold text-red-400 mb-2 uppercase tracking-widest">Errore = -5 Punti</p>
                                     <div className="text-4xl font-black text-blue-500 mb-8 bg-blue-50/50 py-8 rounded-[2rem]">
                                         {formatForCard(modal.termA.coefficient, modal.termA.hasVariable)} {modal.termB.coefficient >= 0 ? "+" : ""} {formatForCard(modal.termB.coefficient, modal.termB.hasVariable).replace('+', '')}
                                     </div>
@@ -196,26 +204,26 @@
                                     <button onClick={() => {
                                         const sum = parseInt(modal.val);
                                         if(sum === (modal.termA.coefficient + modal.termB.coefficient)) {
+                                            setScore(prev => prev + 10);
                                             setTerms(prev => {
                                                 const filtered = prev.filter(t => t.id !== modal.termA.id && t.id !== modal.termB.id);
                                                 return sum === 0 ? filtered : [...filtered, {id: generateId(), coefficient: sum, hasVariable: modal.termA.hasVariable, side: modal.termA.side}];
                                             });
                                             setModal({isOpen:false});
-                                        }
+                                        } else { triggerMalus(5); }
                                     }} className="w-full bg-blue-500 text-white py-5 rounded-3xl font-black text-xl">COMBINA</button>
                                 </motion.div>
                             </div>
                         )}
                     </AnimatePresence>
 
-                    {/* Vittoria */}
                     <AnimatePresence>
                         {gameWon && (
                             <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-[300] bg-green-400/90 flex items-center justify-center text-white text-center">
                                 <div>
-                                    <h1 className="text-9xl font-black italic mb-10 tracking-tighter drop-shadow-lg">EVVAI!</h1>
+                                    <h1 className="text-9xl font-black italic mb-10 tracking-tighter drop-shadow-lg">BOOM!</h1>
                                     <button onClick={() => { setGameWon(false); setTerms(generateLevel()); }}
-                                            className="bg-white text-green-500 px-20 py-8 rounded-[2.5rem] font-black text-4xl shadow-2xl active:scale-95 transition-transform">PROSSIMA</button>
+                                            className="bg-white text-green-500 px-20 py-8 rounded-[2.5rem] font-black text-4xl shadow-2xl">AVANTI</button>
                                 </div>
                             </motion.div>
                         )}
