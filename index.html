@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Algebra Reactor - Full Version</title>
+    <title>Algebra Reactor - Final Fix</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -12,54 +12,38 @@
     <style>
         body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #0f172a; font-family: sans-serif; }
         #root { width: 100vw; height: 100vh; }
+        .card-shadow { box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef, useMemo } = React;
-        const { motion, AnimatePresence, useMotionValue } = window.FramerMotion || window.Motion;
+        const { useState, useEffect, useMemo } = React;
+        const { motion, AnimatePresence } = window.FramerMotion || window.Motion;
 
-        // --- Configurazione Colori Originali ---
         const LHS_BG = '#E3F2FD'; const RHS_BG = '#FFFDE7';
         const LHS_CARD_BG = '#2196F3'; const RHS_CARD_BG = '#FBC02D';
         const generateId = () => Math.random().toString(36).substr(2, 9);
 
-        // --- Logica di Formattazione Termini (Tua originale) ---
-        const formatTerm = (coefficient, hasVariable, showSign = true) => {
-            const absCoeff = Math.abs(coefficient);
-            const sign = coefficient >= 0 ? '+' : '-';
-            const variablePart = hasVariable ? 'x' : '';
-            let coeffPart = absCoeff.toString();
-            if (hasVariable && absCoeff === 1) coeffPart = '';
-            if (coefficient === 0) return '0';
-            return `${showSign ? sign : (coefficient < 0 ? '-' : '')}${coeffPart}${variablePart}`;
+        const formatTerm = (coeff, hasVar, showSign = true) => {
+            if (coeff === 0) return "0";
+            const abs = Math.abs(coeff);
+            const sign = coeff >= 0 ? "+" : "-";
+            const v = hasVar ? "x" : "";
+            const c = (abs === 1 && hasVar) ? "" : abs;
+            return `${showSign ? sign : (coeff < 0 ? "-" : "")}${c}${v}`;
         };
 
-        const getEquationString = (terms) => {
-            const lhs = terms.filter(t => t.side === 'lhs');
-            const rhs = terms.filter(t => t.side === 'rhs');
-            const formatSide = (sideTerms) => {
-                if (sideTerms.length === 0) return '0';
-                return sideTerms.map((t, i) => {
-                    const str = formatTerm(t.coefficient, t.hasVariable, i > 0);
-                    return i > 0 ? ` ${str.startsWith('-') ? '- ' + str.substring(1) : '+ ' + str.substring(1)}` : str;
-                }).join('');
-            };
-            return `${formatSide(lhs)} = ${formatSide(rhs)}`;
-        };
-
-        // --- Generatore Livelli Originale ---
-        const generateLevel = (difficulty) => {
-            const scale = (val) => Math.round(val * difficulty);
-            let finalCoeff = difficulty >= 1.2 ? [2,3,4,5,-2,-3,-4][Math.floor(Math.random()*7)] : 1;
-            const answer = Math.floor(Math.random() * (scale(5) * 2 + 1)) - scale(5);
-            const A = Math.floor(Math.random() * (scale(6) - 2 + 1)) + 2;
+        const generateLevel = (diff) => {
+            const scale = (v) => Math.round(v * diff);
+            // Forza un coefficiente diverso da 1 se la difficoltà è > 1
+            let finalCoeff = diff > 1 ? [2, 3, 5, -2, -3][Math.floor(Math.random()*5)] : 1;
+            const answer = Math.floor(Math.random() * 11) - 5; // x tra -5 e 5
+            const A = Math.floor(Math.random() * 4) + 2; 
             const B = A - finalCoeff;
-            const targetConstantDiff = finalCoeff * answer;
-            const C1 = Math.floor(Math.random() * (scale(10) * 2 + 1)) - scale(10);
-            const C2 = C1 + targetConstantDiff;
+            const C1 = Math.floor(Math.random() * 10) - 5;
+            const C2 = C1 + (finalCoeff * answer);
 
             return [
                 { id: generateId(), coefficient: A, hasVariable: true, side: 'lhs' },
@@ -74,33 +58,42 @@
             const [score, setScore] = useState(0);
             const [solvedCount, setSolvedCount] = useState(0);
             const [gameWon, setGameWon] = useState(false);
-            const [canDivide, setCanDivide] = useState(null);
-            const difficulty = 1 + Math.floor(solvedCount / 2) * 0.2;
-
-            const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, inputValue: '' });
-            const [divModal, setDivModal] = useState({ isOpen: false, divisor: 1, dividend: 0, divIn: '', resIn: '' });
+            const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, val: '' });
+            const [divModal, setDivModal] = useState({ isOpen: false, divisor: 1, dividend: 0, dIn: '', rIn: '' });
 
             useEffect(() => { setTerms(generateLevel(1)); }, []);
 
-            // --- Check Condizioni Vittoria / Divisione ---
-            useEffect(() => {
-                if (gameWon) return;
+            // LOGICA DI VITTORIA E DIVISIONE MIGLIORATA
+            const canDivide = useMemo(() => {
+                if (gameWon || terms.length !== 2) return null;
                 const lhs = terms.filter(t => t.side === 'lhs');
                 const rhs = terms.filter(t => t.side === 'rhs');
                 if (lhs.length === 1 && rhs.length === 1) {
                     const t1 = lhs[0]; const t2 = rhs[0];
-                    let vTerm = null, cTerm = null;
-                    if (t1.hasVariable && !t2.hasVariable) { vTerm = t1; cTerm = t2; }
-                    else if (!t1.hasVariable && t2.hasVariable) { vTerm = t2; cTerm = t1; }
+                    // Caso 1: Ax = B
+                    if (t1.hasVariable && !t2.hasVariable && t1.coefficient !== 1) 
+                        return { divisor: t1.coefficient, dividend: t2.coefficient };
+                    // Caso 2: B = Ax
+                    if (!t1.hasVariable && t2.hasVariable && t2.coefficient !== 1) 
+                        return { divisor: t2.coefficient, dividend: t1.coefficient };
+                }
+                return null;
+            }, [terms, gameWon]);
 
-                    if (vTerm && cTerm) {
-                        if (vTerm.coefficient === 1) {
+            useEffect(() => {
+                if (gameWon) return;
+                // Controllo vittoria immediata (x = n)
+                if (terms.length === 2) {
+                    const lhs = terms.filter(t => t.side === 'lhs');
+                    const rhs = terms.filter(t => t.side === 'rhs');
+                    if (lhs.length === 1 && rhs.length === 1) {
+                        const v = lhs[0].hasVariable ? lhs[0] : rhs[0];
+                        const c = lhs[0].hasVariable ? rhs[0] : lhs[0];
+                        if (v.hasVariable && !c.hasVariable && v.coefficient === 1) {
                             setGameWon(true); setScore(s => s + 10); setSolvedCount(c => c + 1);
-                        } else {
-                            setCanDivide({ divisor: vTerm.coefficient, dividend: cTerm.coefficient });
                         }
                     }
-                } else { setCanDivide(null); }
+                }
             }, [terms]);
 
             const handleDragEnd = (term, info, element) => {
@@ -115,109 +108,100 @@
                 });
 
                 if (overlap) {
-                    setModal({ isOpen: true, termA: {...term, coefficient: newSide !== term.side ? -term.coefficient : term.coefficient, side: newSide}, termB: overlap, inputValue: '' });
+                    setModal({ isOpen: true, termA: {...term, coefficient: newSide !== term.side ? -term.coefficient : term.coefficient, side: newSide}, termB: overlap, val: '' });
                 } else if (newSide !== term.side) {
                     setTerms(prev => prev.map(t => t.id === term.id ? { ...t, side: newSide, coefficient: -t.coefficient } : t));
                 }
             };
 
-            const handleMerge = (e) => {
-                e.preventDefault();
-                const sum = modal.termA.coefficient + modal.termB.coefficient;
-                if (parseInt(modal.inputValue) === sum) {
-                    setTerms(prev => [...prev.filter(t => t.id !== modal.termA.id && t.id !== modal.termB.id), 
-                                     { id: generateId(), coefficient: sum, hasVariable: modal.termA.hasVariable, side: modal.termA.side }]);
-                    setModal({ isOpen: false });
-                }
-            };
-
-            const handleDivision = (e) => {
-                e.preventDefault();
-                if (parseInt(divModal.divIn) === divModal.divisor && parseInt(divModal.resIn) === (divModal.dividend / divModal.divisor)) {
-                    setTerms(prev => prev.map(t => ({ ...t, coefficient: t.hasVariable ? 1 : (divModal.dividend / divModal.divisor) })));
-                    setDivModal({ isOpen: false });
-                }
-            };
-
             return (
-                <div className="relative w-full h-full overflow-hidden select-none">
+                <div className="relative w-full h-full overflow-hidden font-sans">
                     <div className="absolute inset-0 flex">
-                        <div className="w-1/2 h-full" style={{ backgroundColor: LHS_BG }} />
-                        <div className="w-1/2 h-full" style={{ backgroundColor: RHS_BG }} />
+                        <div className="w-1/2 h-full" style={{backgroundColor: LHS_BG}} />
+                        <div className="w-1/2 h-full" style={{backgroundColor: RHS_BG}} />
                     </div>
 
-                    {/* UI Headers */}
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
-                        <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-md font-bold text-slate-800">
-                            Score: {score} | Diff: {difficulty.toFixed(1)}x
-                        </div>
-                        <div className="bg-white px-6 py-2 rounded-xl shadow-lg border border-slate-200 font-mono font-bold text-xl">
-                            {getEquationString(terms)}
+                    <div className="absolute top-6 w-full flex flex-col items-center z-50 pointer-events-none">
+                        <div className="bg-slate-900 text-white px-6 py-2 rounded-full shadow-2xl flex gap-4 font-bold">
+                            <span>PUNTI: {score}</span>
+                            <span className="opacity-50">|</span>
+                            <span>LIVELLO: {solvedCount + 1}</span>
                         </div>
                     </div>
 
-                    {/* Center Equal */}
-                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/10 flex items-center justify-center">
-                        <div className="bg-slate-800 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold text-xl shadow-xl">=</div>
-                    </div>
-
-                    {/* Cards */}
-                    {terms.map(term => (
-                        <DraggableCard key={term.id} term={term} onDragEnd={handleDragEnd} />
+                    {terms.map(t => (
+                        <Card key={t.id} term={t} onDragEnd={handleDragEnd} />
                     ))}
 
-                    {/* Division Button */}
-                    {canDivide && !gameWon && (
-                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-20 z-30">
-                            <button onClick={() => setDivModal({ ...divModal, isOpen: true, divisor: canDivide.divisor, dividend: canDivide.dividend })}
-                                    className="bg-purple-600 text-white px-8 py-3 rounded-full font-bold shadow-2xl border-4 border-white animate-bounce">
-                                DIVIDI ORA!
-                            </button>
-                        </div>
-                    )}
+                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/10 flex items-center justify-center">
+                        <div className="bg-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center font-bold text-slate-400">=</div>
+                    </div>
 
-                    {/* Win Modal */}
+                    {/* TASTO DIVISIONE */}
                     <AnimatePresence>
-                        {gameWon && (
-                            <motion.div initial={{scale:0}} animate={{scale:1}} className="absolute inset-0 z-[100] bg-green-500/90 flex items-center justify-center text-white">
-                                <div className="text-center p-10 bg-white rounded-[3rem] shadow-2xl">
-                                    <h1 className="text-4xl font-black text-green-600 mb-2">RISOLTA!</h1>
-                                    <p className="text-slate-500 mb-6">Valore trovato: x = {terms.find(t => !t.hasVariable)?.coefficient}</p>
-                                    <button onClick={() => { setGameWon(false); setTerms(generateLevel(difficulty)); }} 
-                                            className="bg-green-500 text-white px-10 py-4 rounded-2xl font-bold text-xl shadow-lg">PROSSIMA EQUAZIONE</button>
-                                </div>
+                        {canDivide && (
+                            <motion.div initial={{y:100}} animate={{y:0}} exit={{y:100}} className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50">
+                                <button onClick={() => setDivModal({isOpen:true, divisor: canDivide.divisor, dividend: canDivide.dividend, dIn:'', rIn:''})}
+                                        className="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black text-xl shadow-[0_0_30px_rgba(147,51,234,0.5)] border-4 border-white animate-pulse">
+                                    DIVIDI PER {canDivide.divisor}
+                                </button>
                             </motion.div>
                         )}
+                    </AnimatePresence>
 
-                        {/* Merge Modal */}
-                        {modal.isOpen && (
-                            <div className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
-                                <motion.div initial={{y:50}} animate={{y:0}} className="bg-white p-8 rounded-3xl shadow-2xl w-80 text-center">
-                                    <h2 className="font-bold text-slate-400 mb-4 uppercase">Combina i termini</h2>
-                                    <div className="text-2xl font-black text-blue-600 mb-4">
-                                        {formatTerm(modal.termA.coefficient, modal.termA.hasVariable)} + {formatTerm(modal.termB.coefficient, modal.termB.hasVariable)}
-                                    </div>
-                                    <form onSubmit={handleMerge}>
-                                        <input autoFocus type="number" className="w-full bg-slate-100 p-4 rounded-xl text-center text-2xl font-bold mb-4" 
-                                               value={modal.inputValue} onChange={e => setModal({...modal, inputValue: e.target.value})} />
-                                        <button className="w-full bg-blue-500 text-white py-4 rounded-xl font-bold">MERGE</button>
-                                    </form>
+                    {/* MODALE DIVISIONE */}
+                    <AnimatePresence>
+                        {divModal.isOpen && (
+                            <div className="absolute inset-0 z-[100] bg-purple-900/80 backdrop-blur flex items-center justify-center">
+                                <motion.div initial={{scale:0.8}} animate={{scale:1}} className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-xs text-center">
+                                    <h2 className="font-bold text-purple-600 mb-6">ULTIMO STEP!</h2>
+                                    <p className="text-slate-500 mb-4 text-sm">Dividi entrambi i lati per {divModal.divisor}</p>
+                                    <input type="number" placeholder="Divisore" className="w-full bg-slate-100 p-4 rounded-xl mb-2 text-center font-bold"
+                                           value={divModal.dIn} onChange={e => setDivModal({...divModal, dIn: e.target.value})} />
+                                    <input type="number" placeholder="Risultato" className="w-full bg-slate-100 p-4 rounded-xl mb-4 text-center font-bold"
+                                           value={divModal.rIn} onChange={e => setDivModal({...divModal, rIn: e.target.value})} />
+                                    <button onClick={() => {
+                                        if(parseInt(divModal.dIn) === divModal.divisor && parseInt(divModal.rIn) === (divModal.dividend / divModal.divisor)) {
+                                            setTerms(prev => prev.map(t => ({...t, coefficient: t.hasVariable ? 1 : (divModal.dividend / divModal.divisor)})));
+                                            setDivModal({isOpen:false});
+                                        }
+                                    }} className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold">CONFERMA</button>
                                 </motion.div>
                             </div>
                         )}
+                    </AnimatePresence>
 
-                        {/* Division Modal */}
-                        {divModal.isOpen && (
-                            <div className="absolute inset-0 z-[100] bg-purple-900/60 backdrop-blur-sm flex items-center justify-center">
-                                <motion.div initial={{scale:0.9}} animate={{scale:1}} className="bg-white p-8 rounded-3xl shadow-2xl w-80">
-                                    <h2 className="text-center font-bold mb-4">Isola la x</h2>
-                                    <form onSubmit={handleDivision} className="space-y-4">
-                                        <input type="number" placeholder="Dividi per..." className="w-full p-3 bg-slate-100 rounded-lg text-center font-bold"
-                                               value={divModal.divIn} onChange={e => setDivModal({...divModal, divIn: e.target.value})} />
-                                        <input type="number" placeholder="Risultato finale..." className="w-full p-3 bg-slate-100 rounded-lg text-center font-bold"
-                                               value={divModal.resIn} onChange={e => setDivModal({...divModal, resIn: e.target.value})} />
-                                        <button className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold">RISOLVI</button>
-                                    </form>
+                    {/* MODALE MERGE */}
+                    <AnimatePresence>
+                        {modal.isOpen && (
+                            <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                                <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-80 text-center">
+                                    <div className="text-3xl font-black text-blue-600 mb-6 italic">
+                                        {formatTerm(modal.termA.coefficient, modal.termA.hasVariable)} {modal.termB.coefficient >= 0 ? "+" : ""} {formatTerm(modal.termB.coefficient, modal.termB.hasVariable, false)}
+                                    </div>
+                                    <input autoFocus type="number" className="w-full bg-slate-100 p-4 rounded-2xl mb-4 text-center text-3xl font-bold" 
+                                           value={modal.val} onChange={e => setModal({...modal, val: e.target.value})} />
+                                    <button onClick={() => {
+                                        if(parseInt(modal.val) === (modal.termA.coefficient + modal.termB.coefficient)) {
+                                            setTerms(prev => [...prev.filter(t => t.id !== modal.termA.id && t.id !== modal.termB.id), 
+                                                             {id: generateId(), coefficient: parseInt(modal.val), hasVariable: modal.termA.hasVariable, side: modal.termA.side}]);
+                                            setModal({isOpen:false});
+                                        }
+                                    }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-xl">FUSION!</button>
+                                </div>
+                            </div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* MODALE VITTORIA */}
+                    <AnimatePresence>
+                        {gameWon && (
+                            <div className="absolute inset-0 z-[200] bg-green-500 flex items-center justify-center">
+                                <motion.div initial={{scale:0}} animate={{scale:1.2}} className="text-center text-white">
+                                    <h1 className="text-6xl font-black mb-4 uppercase tracking-tighter">Perfetto!</h1>
+                                    <p className="text-2xl mb-8 opacity-80">Hai trovato la X</p>
+                                    <button onClick={() => { setGameWon(false); setTerms(generateLevel(1 + (solvedCount+1)*0.2)); }}
+                                            className="bg-white text-green-600 px-12 py-4 rounded-full font-black text-2xl shadow-2xl">AVANTI</button>
                                 </motion.div>
                             </div>
                         )}
@@ -226,22 +210,21 @@
             );
         }
 
-        function DraggableCard({ term, onDragEnd }) {
-            const isLHS = term.side === 'lhs';
-            const initialPos = useMemo(() => ({
-                x: isLHS ? 80 + Math.random()*100 : window.innerWidth - 180 - Math.random()*100,
-                y: 150 + Math.random() * (window.innerHeight - 300)
+        function Card({ term, onDragEnd }) {
+            const isL = term.side === 'lhs';
+            const pos = useMemo(() => ({
+                x: isL ? 60 + Math.random()*100 : window.innerWidth - 180 - Math.random()*100,
+                y: 180 + Math.random() * (window.innerHeight - 350)
             }), [term.side]);
 
             return (
                 <motion.div
                     id={`card-${term.id}`}
                     drag dragMomentum={false}
-                    initial={{ x: initialPos.x, y: initialPos.y, scale: 0 }}
-                    animate={{ x: initialPos.x, y: initialPos.y, scale: 1, backgroundColor: isLHS ? LHS_CARD_BG : RHS_CARD_BG }}
-                    whileDrag={{ zIndex: 50, scale: 1.1 }}
+                    initial={{ x: pos.x, y: pos.y, scale: 0 }}
+                    animate={{ x: pos.x, y: pos.y, scale: 1, backgroundColor: isL ? LHS_CARD_BG : RHS_CARD_BG }}
                     onDragEnd={(e, info) => onDragEnd(term, info, e.target)}
-                    className="absolute w-24 h-24 rounded-2xl shadow-xl flex items-center justify-center text-white text-2xl font-bold cursor-grab active:cursor-grabbing border-4 border-white/20"
+                    className="absolute w-24 h-24 rounded-[2rem] card-shadow flex items-center justify-center text-white text-3xl font-black cursor-grab active:cursor-grabbing border-b-8 border-black/20"
                 >
                     {formatTerm(term.coefficient, term.hasVariable, false)}
                 </motion.div>
