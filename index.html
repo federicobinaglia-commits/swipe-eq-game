@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/framer-motion@11.0.3/dist/framer-motion.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/framer-motion@11.0.3/dist/framer-motion.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
@@ -19,11 +19,17 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        // SICUREZZA: Verifichiamo come si chiama la libreria nel tuo browser
+        const MotionLib = window.FramerMotion || window.Motion;
+        
+        if (!MotionLib) {
+            document.getElementById('root').innerHTML = "<div style='color:white; padding:20px;'>Caricamento librerie in corso... Se il messaggio persiste, ricarica la pagina.</div>";
+        }
+
         const { useState, useEffect, useRef, useMemo } = React;
-        const { motion, AnimatePresence, useMotionValue } = FramerMotion;
+        const { motion, AnimatePresence } = MotionLib;
         const { Plus, Equal, Trophy } = Lucide;
 
-        // --- Constants & Helpers ---
         const LHS_BG = '#E3F2FD'; const RHS_BG = '#FFFDE7';
         const LHS_CARD_BG = '#2196F3'; const RHS_CARD_BG = '#FBC02D';
         const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -32,52 +38,39 @@
             const absCoeff = Math.abs(coefficient);
             const sign = coefficient >= 0 ? '+' : '-';
             const variablePart = hasVariable ? 'x' : '';
-            let coeffPart = absCoeff === 1 && hasVariable ? '' : absCoeff.toString();
+            let coeffPart = (absCoeff === 1 && hasVariable) ? '' : absCoeff.toString();
             if (coefficient === 0) return '0';
             return `${showSign ? sign : (coefficient < 0 ? '-' : '')}${coeffPart}${variablePart}`;
         };
 
-        const getEquationString = (terms) => {
-            const lhs = terms.filter(t => t.side === 'lhs');
-            const rhs = terms.filter(t => t.side === 'rhs');
-            const formatSide = (sideTerms) => {
-                if (sideTerms.length === 0) return '0';
-                return sideTerms.map((t, i) => formatTerm(t.coefficient, t.hasVariable, i > 0)).join(' ');
-            };
-            return `${formatSide(lhs)} = ${formatSide(rhs)}`;
-        };
-
-        const generateLevel = (difficulty) => {
-            const xVal = Math.floor(Math.random() * 5) + 1;
-            const cL = Math.floor(Math.random() * 6) + 2;
-            return [
-                { id: generateId(), coefficient: 1, hasVariable: true, side: 'lhs' },
-                { id: generateId(), coefficient: cL, hasVariable: false, side: 'lhs' },
-                { id: generateId(), coefficient: xVal + cL, hasVariable: false, side: 'rhs' }
-            ];
-        };
-
-        // --- Main App ---
         function App() {
             const [terms, setTerms] = useState([]);
             const [score, setScore] = useState(0);
             const [gameWon, setGameWon] = useState(false);
-            const containerRef = useRef(null);
-            const [bounds, setBounds] = useState({ width: window.innerWidth, height: window.innerHeight, left: 0 });
-
+            const [bounds, setBounds] = useState({ width: window.innerWidth, height: window.innerHeight });
             const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, inputValue: '' });
 
-            useEffect(() => { setTerms(generateLevel(1)); }, []);
+            useEffect(() => {
+                setTerms([
+                    { id: generateId(), coefficient: 1, hasVariable: true, side: 'lhs' },
+                    { id: generateId(), coefficient: 3, hasVariable: false, side: 'lhs' },
+                    { id: generateId(), coefficient: 7, hasVariable: false, side: 'rhs' }
+                ]);
+                const handleResize = () => setBounds({ width: window.innerWidth, height: window.innerHeight });
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
 
             const handleDragEnd = (term, info, element) => {
-                const center = bounds.width / 2;
+                const center = window.innerWidth / 2;
                 const newSide = info.point.x < center ? 'lhs' : 'rhs';
                 
-                // Controllo collisione per Merge
+                // Logica Merge semplificata per stabilità
                 const cardRect = element.getBoundingClientRect();
                 const overlap = terms.find(t => {
                     if (t.id === term.id || t.side !== newSide || t.hasVariable !== term.hasVariable) return false;
-                    const target = document.getElementById(`card-${t.id}`).getBoundingClientRect();
+                    const target = document.getElementById(`card-${t.id}`)?.getBoundingClientRect();
+                    if (!target) return false;
                     return !(cardRect.right < target.left || cardRect.left > target.right || cardRect.bottom < target.top || cardRect.top > target.bottom);
                 });
 
@@ -91,16 +84,6 @@
                 } else if (newSide !== term.side) {
                     setTerms(prev => prev.map(t => t.id === term.id ? { ...t, side: newSide, coefficient: -t.coefficient } : t));
                 }
-                
-                // Check win condition semplice
-                setTimeout(() => {
-                    const lhs = terms.filter(t => t.side === 'lhs');
-                    const rhs = terms.filter(t => t.side === 'rhs');
-                    if (lhs.length === 1 && rhs.length === 1 && lhs[0].hasVariable !== rhs[0].hasVariable) {
-                        setGameWon(true);
-                        setScore(s => s + 10);
-                    }
-                }, 500);
             };
 
             const handleMerge = (e) => {
@@ -111,57 +94,45 @@
                         const filtered = prev.filter(t => t.id !== modal.termA.id && t.id !== modal.termB.id);
                         return [...filtered, { id: generateId(), coefficient: result, hasVariable: modal.termA.hasVariable, side: modal.termA.side }];
                     });
-                    setModal({ isOpen: false });
+                    setModal({ isOpen: false, termA: null, termB: null, inputValue: '' });
                 }
             };
 
             return (
-                <div ref={containerRef} className="relative w-full h-full overflow-hidden select-none">
-                    <div className="absolute inset-0 flex">
+                <div className="relative w-full h-full overflow-hidden">
+                    <div className="absolute inset-0 flex pointer-events-none">
                         <div className="w-1/2 h-full" style={{ backgroundColor: LHS_BG }} />
                         <div className="w-1/2 h-full" style={{ backgroundColor: RHS_BG }} />
                     </div>
-                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/20 flex items-center justify-center z-10">
-                        <div className="bg-white p-2 rounded-full shadow-lg"><Equal size={24} /></div>
+                    
+                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/10 flex items-center justify-center">
+                        <div className="bg-white p-2 rounded-full shadow-lg z-10"><Equal size={24} /></div>
                     </div>
 
-                    <div className="absolute top-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
-                        <div className="bg-white/90 backdrop-blur px-6 py-2 rounded-full shadow-xl flex items-center gap-3">
+                    <div className="absolute top-6 w-full flex flex-col items-center z-50 pointer-events-none">
+                        <div className="bg-white shadow-xl px-6 py-2 rounded-full flex items-center gap-3">
                             <Trophy className="text-yellow-500" />
-                            <span className="font-bold">SCORE: {score}</span>
-                        </div>
-                        <div className="mt-4 font-mono text-xl font-bold text-slate-700 bg-white/50 px-4 py-1 rounded-lg">
-                            {getEquationString(terms)}
+                            <span className="font-bold text-slate-800">SCORE: {score}</span>
                         </div>
                     </div>
 
                     {terms.map(term => (
-                        <DraggableCard key={term.id} term={term} bounds={bounds} onDragEnd={handleDragEnd} />
+                        <DraggableCard key={term.id} term={term} onDragEnd={handleDragEnd} />
                     ))}
 
                     <AnimatePresence>
                         {modal.isOpen && (
-                            <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                                <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center">
-                                    <h2 className="font-bold mb-4">Combina i termini</h2>
-                                    <div className="text-xl mb-4 font-bold text-blue-600">
+                            <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                                <div className="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-xs">
+                                    <h2 className="text-center font-bold text-slate-500 uppercase text-xs mb-2">Somma i coefficienti</h2>
+                                    <div className="text-2xl text-center mb-6 font-black text-blue-600">
                                         {formatTerm(modal.termA.coefficient, modal.termA.hasVariable)} + {formatTerm(modal.termB.coefficient, modal.termB.hasVariable)}
                                     </div>
                                     <form onSubmit={handleMerge}>
-                                        <input autoFocus type="number" className="w-full border-2 p-2 rounded mb-4 text-center text-2xl" 
+                                        <input autoFocus type="number" className="w-full bg-slate-100 border-none p-4 rounded-2xl mb-4 text-center text-3xl font-bold focus:ring-2 focus:ring-blue-500 outline-none" 
                                             value={modal.inputValue} onChange={e => setModal({...modal, inputValue: e.target.value})} />
-                                        <button className="w-full bg-blue-500 text-white py-2 rounded font-bold">MERGE</button>
+                                        <button className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition-colors">CONFERMA</button>
                                     </form>
-                                </div>
-                            </motion.div>
-                        )}
-
-                        {gameWon && (
-                            <motion.div initial={{scale:0}} animate={{scale:1}} className="absolute inset-0 z-[100] bg-blue-500/90 flex items-center justify-center text-white">
-                                <div className="text-center">
-                                    <h1 className="text-5xl font-black mb-4">RISOLTA!</h1>
-                                    <button onClick={() => {setGameWon(false); setTerms(generateLevel(1));}} 
-                                        className="bg-white text-blue-500 px-8 py-3 rounded-full font-bold text-xl">PROSSIMA</button>
                                 </div>
                             </motion.div>
                         )}
@@ -170,28 +141,31 @@
             );
         }
 
-        function DraggableCard({ term, bounds, onDragEnd }) {
+        function DraggableCard({ term, onDragEnd }) {
             const isLHS = term.side === 'lhs';
             const initialPos = useMemo(() => ({
-                x: isLHS ? 100 + Math.random()*100 : bounds.width - 250 - Math.random()*100,
-                y: 150 + Math.random() * (bounds.height - 300)
+                x: isLHS ? 50 + Math.random()*100 : window.innerWidth - 150 - Math.random()*100,
+                y: 150 + Math.random() * (window.innerHeight - 300)
             }), [term.side]);
 
             return (
                 <motion.div
                     id={`card-${term.id}`}
-                    drag dragMomentum={false}
+                    drag
+                    dragMomentum={false}
                     initial={{ x: initialPos.x, y: initialPos.y, scale: 0 }}
                     animate={{ x: initialPos.x, y: initialPos.y, scale: 1, backgroundColor: isLHS ? LHS_CARD_BG : RHS_CARD_BG }}
+                    whileTap={{ scale: 1.1, zIndex: 100 }}
                     onDragEnd={(e, info) => onDragEnd(term, info, e.target)}
-                    className="absolute w-24 h-24 rounded-2xl shadow-xl flex items-center justify-center text-white text-2xl font-bold cursor-grab active:cursor-grabbing z-30"
+                    className="absolute w-20 h-20 rounded-2xl shadow-xl flex items-center justify-center text-white text-2xl font-bold cursor-grab active:cursor-grabbing border-4 border-white/20"
                 >
                     {formatTerm(term.coefficient, term.hasVariable, false)}
                 </motion.div>
             );
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
