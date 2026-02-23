@@ -3,16 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Algebra Reactor - Full Vision</title>
+    <title>Algebra Reactor - Crystal Clear</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #0f172a; font-family: ui-sans-serif, system-ui; }
+        body { margin: 0; padding: 0; overflow: hidden; touch-action: none; background-color: #0f172a; font-family: system-ui, sans-serif; }
         #root { width: 100vw; height: 100vh; }
-        .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.4); }
+        /* Vetro quasi invisibile per vedere sotto */
+        .glass-ultra-light { 
+            background: rgba(255, 255, 255, 0.7); 
+            backdrop-filter: blur(2px); 
+            border: 2px solid rgba(255,255,255,0.5); 
+        }
         .card-shadow { box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); }
     </style>
 </head>
@@ -27,17 +32,26 @@
         const LHS_CARD_BG = '#2196F3'; const RHS_CARD_BG = '#FBC02D';
         const generateId = () => Math.random().toString(36).substr(2, 9);
 
-        const formatTerm = (coeff, hasVar, showSign = true) => {
+        // Funzione per il segno visivo sul cubo
+        const formatForCard = (coeff, hasVar) => {
             const abs = Math.abs(coeff);
             const sign = coeff >= 0 ? "+" : "-";
             const v = hasVar ? "x" : "";
             const c = (abs === 1 && hasVar) ? "" : abs;
+            return `${sign}${c}${v}`;
+        };
+
+        const formatForEq = (coeff, hasVar, showPlus = true) => {
+            const abs = Math.abs(coeff);
+            const v = hasVar ? "x" : "";
+            const c = (abs === 1 && hasVar) ? "" : abs;
             if (coeff === 0) return "";
-            return `${showSign ? " " + sign + " " : (coeff < 0 ? "-" : "")}${c}${v}`;
+            if (coeff > 0) return showPlus ? ` + ${c}${v}` : `${c}${v}`;
+            return ` - ${c}${v}`;
         };
 
         const generateLevel = () => {
-            let fCoeff = [2, 3, 4, 5, -2, -3][Math.floor(Math.random()*6)];
+            let fCoeff = [2, 3, 5, -2, -3][Math.floor(Math.random()*5)];
             let ans = 0; while(ans === 0) ans = Math.floor(Math.random() * 9) - 4; 
             const A = Math.floor(Math.random() * 3) + 5; 
             const B = A - fCoeff;
@@ -54,18 +68,16 @@
 
         function App() {
             const [terms, setTerms] = useState([]);
-            const [score, setScore] = useState(0);
             const [gameWon, setGameWon] = useState(false);
             const [modal, setModal] = useState({ isOpen: false, termA: null, termB: null, val: '' });
             const [divModal, setDivModal] = useState({ isOpen: false, divisor: 1, dividend: 0, dIn: '', rIn: '' });
 
             useEffect(() => { setTerms(generateLevel()); }, []);
 
-            // --- EQUAZIONE DINAMICA IN ALTO ---
             const equationString = useMemo(() => {
                 const lhs = terms.filter(t => t.side === 'lhs');
                 const rhs = terms.filter(t => t.side === 'rhs');
-                const fmt = (list) => list.length === 0 ? "0" : list.map((t, i) => formatTerm(t.coefficient, t.hasVariable, i > 0)).join('');
+                const fmt = (list) => list.length === 0 ? "0" : list.map((t, i) => formatForEq(t.coefficient, t.hasVariable, i > 0)).join('');
                 return `${fmt(lhs)} = ${fmt(rhs)}`;
             }, [terms]);
 
@@ -80,7 +92,7 @@
             useEffect(() => {
                 const v = terms.find(t => t.hasVariable);
                 if (terms.length === 2 && v?.coefficient === 1 && !gameWon) {
-                    setGameWon(true); setScore(s => s + 10);
+                    setGameWon(true);
                 }
             }, [terms]);
 
@@ -88,14 +100,22 @@
                 const center = window.innerWidth / 2;
                 const newSide = info.point.x < center ? 'lhs' : 'rhs';
                 const rect = element.getBoundingClientRect();
+                
                 const overlap = terms.find(t => {
                     if (t.id === term.id || t.side !== newSide || t.hasVariable !== term.hasVariable) return false;
                     const target = document.getElementById(`card-${t.id}`)?.getBoundingClientRect();
                     return target && !(rect.right < target.left || rect.left > target.right || rect.bottom < target.top || rect.top > target.bottom);
                 });
+
                 if (overlap) {
-                    setModal({ isOpen: true, termA: {...term, coefficient: newSide !== term.side ? -term.coefficient : term.coefficient, side: newSide}, termB: overlap, val: '' });
+                    setModal({ 
+                        isOpen: true, 
+                        termA: {...term, coefficient: newSide !== term.side ? -term.coefficient : term.coefficient, side: newSide}, 
+                        termB: overlap, 
+                        val: '' 
+                    });
                 } else if (newSide !== term.side) {
+                    // CAMBIO SEGNO LOGICO
                     setTerms(prev => prev.map(t => t.id === term.id ? { ...t, side: newSide, coefficient: -t.coefficient } : t));
                 }
             };
@@ -103,68 +123,56 @@
             return (
                 <div className="relative w-full h-full overflow-hidden">
                     <div className="absolute inset-0 flex">
-                        <div className="w-1/2 h-full" style={{backgroundColor: LHS_BG}} />
-                        <div className="w-1/2 h-full" style={{backgroundColor: RHS_BG}} />
+                        <div className="w-1/2 h-full opacity-40" style={{backgroundColor: LHS_BG}} />
+                        <div className="w-1/2 h-full opacity-40" style={{backgroundColor: RHS_BG}} />
                     </div>
 
-                    {/* EQUAZIONE DINAMICA SEMPRE VISIBILE */}
-                    <div className="absolute top-6 w-full flex flex-col items-center z-[60] pointer-events-none px-4">
-                        <div className="bg-white/90 backdrop-blur-md px-8 py-3 rounded-2xl shadow-xl border-2 border-slate-200">
-                            <span className="text-2xl font-black font-mono text-slate-800 tracking-tight italic">
+                    <div className="absolute top-8 w-full flex flex-col items-center z-[60] pointer-events-none px-4 text-center">
+                        <div className="bg-slate-900 text-white px-8 py-4 rounded-3xl shadow-2xl border-2 border-slate-700">
+                            <span className="text-3xl font-black font-mono tracking-tighter">
                                 {equationString}
                             </span>
                         </div>
-                        <div className="mt-2 text-slate-500 font-bold uppercase text-xs tracking-widest">Equazione Corrente</div>
                     </div>
 
                     {terms.map(t => ( <Card key={t.id} term={t} onDragEnd={handleDragEnd} /> ))}
 
-                    <div className="absolute left-1/2 inset-y-0 w-1 bg-black/5 flex items-center justify-center pointer-events-none">
-                        <div className="bg-slate-800 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-lg">=</div>
+                    <div className="absolute left-1/2 inset-y-0 w-1 bg-slate-400 opacity-20 flex items-center justify-center pointer-events-none">
+                        <div className="bg-slate-800 text-white w-12 h-12 rounded-full flex items-center justify-center font-bold shadow-xl border-4 border-slate-700 text-2xl">=</div>
                     </div>
 
-                    {/* BOTTONE DIVISIONE */}
                     <AnimatePresence>
                         {canDivide && (
-                            <motion.button initial={{y:50, opacity:0}} animate={{y:0, opacity:1}} exit={{y:50, opacity:0}}
+                            <motion.button initial={{y:50}} animate={{y:0}} exit={{y:50}}
                                 onClick={() => setDivModal({isOpen:true, divisor: canDivide.divisor, dividend: canDivide.dividend, dIn:'', rIn:''})}
                                 className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 bg-indigo-600 text-white px-12 py-5 rounded-full font-black text-2xl shadow-2xl animate-bounce border-4 border-white"
                             >
-                                DIVIDI ORA!
+                                DIVIDI ÷
                             </motion.button>
                         )}
                     </AnimatePresence>
 
-                    {/* MODALE DIVISIONE TRASPARENTE (GLASSMORPISM) */}
+                    {/* MODALE DIVISIONE SUPER TRASPARENTE */}
                     <AnimatePresence>
                         {divModal.isOpen && (
-                            <div className="absolute inset-0 z-[100] bg-slate-900/30 backdrop-blur-sm flex items-center justify-center p-6 text-slate-900">
-                                <motion.div initial={{scale:0.9}} animate={{scale:1}} className="glass p-8 rounded-[3rem] shadow-2xl w-full max-w-sm text-center">
-                                    <h2 className="text-xl font-black mb-1">ULTIMO PASSAGGIO</h2>
-                                    <p className="text-sm font-bold opacity-60 mb-6 uppercase tracking-wider">Isola la variabile x</p>
-                                    
+                            <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 pointer-events-none">
+                                <motion.div initial={{scale:0.9, opacity:0}} animate={{scale:1, opacity:1}} className="glass-ultra-light p-8 rounded-[3rem] shadow-2xl w-full max-w-sm text-center pointer-events-auto">
+                                    <h2 className="text-2xl font-black mb-6 text-slate-800">Dividi tutto per {divModal.divisor}</h2>
                                     <div className="space-y-4 mb-8">
-                                        <div className="bg-white/60 p-4 rounded-2xl">
-                                            <p className="text-xs font-bold text-slate-400 mb-2 uppercase italic">Dividi entrambi i membri per:</p>
-                                            <input type="number" placeholder="?" className="w-24 text-center text-3xl font-black bg-transparent border-b-4 border-indigo-500 outline-none"
-                                                   value={divModal.dIn} onChange={e => setDivModal({...divModal, dIn: e.target.value})} />
-                                        </div>
-                                        <div className="bg-white/60 p-4 rounded-2xl border-2 border-green-200">
-                                            <p className="text-xs font-bold text-green-500 mb-2 uppercase italic">Risultato finale:</p>
-                                            <div className="flex justify-center items-center text-3xl font-black text-green-600">
-                                                <span className="mr-2 italic">x =</span>
-                                                <input type="number" placeholder="?" className="w-24 text-center bg-transparent outline-none"
-                                                       value={divModal.rIn} onChange={e => setDivModal({...divModal, rIn: e.target.value})} />
-                                            </div>
+                                        <input type="number" placeholder="Divisore" className="w-full p-4 rounded-2xl border-2 border-indigo-300 text-center text-2xl font-bold bg-white/50"
+                                               value={divModal.dIn} onChange={e => setDivModal({...divModal, dIn: e.target.value})} />
+                                        <div className="flex items-center justify-center text-3xl font-black text-indigo-700">
+                                            <span className="mr-2">x =</span>
+                                            <input type="number" placeholder="?" className="w-24 text-center bg-transparent border-b-4 border-indigo-700 outline-none"
+                                                   value={divModal.rIn} onChange={e => setDivModal({...divModal, rIn: e.target.value})} />
                                         </div>
                                     </div>
-
                                     <button onClick={() => {
                                         if(parseInt(divModal.dIn) === divModal.divisor && parseInt(divModal.rIn) === (divModal.dividend / divModal.divisor)) {
                                             setTerms(prev => prev.map(t => ({...t, coefficient: t.hasVariable ? 1 : (divModal.dividend / divModal.divisor)})));
                                             setDivModal({isOpen:false});
-                                        } else { alert("Attenzione: devi dividere " + divModal.dividend + " per " + divModal.divisor); }
-                                    }} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-xl">RISOLVI EQUAZIONE</button>
+                                        } else { alert("Sbagliato! Devi dividere " + divModal.dividend + " per " + divModal.divisor); }
+                                    }} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-xl shadow-lg">CONFERMA</button>
                                 </motion.div>
                             </div>
                         )}
@@ -173,12 +181,12 @@
                     {/* MODALE FUSION */}
                     <AnimatePresence>
                         {modal.isOpen && (
-                            <div className="absolute inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
+                            <div className="absolute inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center">
                                 <motion.div initial={{y:20}} animate={{y:0}} className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-80 text-center">
-                                    <div className="text-4xl font-black text-blue-600 mb-6 bg-blue-50 py-6 rounded-3xl">
-                                        {formatTerm(modal.termA.coefficient, modal.termA.hasVariable, false)} {modal.termB.coefficient >= 0 ? "+" : "-"} {Math.abs(modal.termB.coefficient)}{modal.termB.hasVariable ? "x" : ""}
+                                    <div className="text-3xl font-black text-blue-600 mb-6">
+                                        {formatForCard(modal.termA.coefficient, modal.termA.hasVariable)} {modal.termB.coefficient >= 0 ? "+" : ""} {formatForCard(modal.termB.coefficient, modal.termB.hasVariable).replace('+', '')}
                                     </div>
-                                    <input autoFocus type="number" className="w-full bg-slate-100 p-5 rounded-2xl mb-4 text-center text-4xl font-black outline-none" 
+                                    <input autoFocus type="number" className="w-full bg-slate-100 p-5 rounded-2xl mb-4 text-center text-4xl font-black outline-none border-4 border-blue-100" 
                                            value={modal.val} onChange={e => setModal({...modal, val: e.target.value})} />
                                     <button onClick={() => {
                                         const sum = parseInt(modal.val);
@@ -189,7 +197,7 @@
                                             });
                                             setModal({isOpen:false});
                                         }
-                                    }} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xl shadow-lg">COMBINA</button>
+                                    }} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xl">SOMMA</button>
                                 </motion.div>
                             </div>
                         )}
@@ -198,11 +206,11 @@
                     {/* VITTORIA */}
                     <AnimatePresence>
                         {gameWon && (
-                            <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-[300] bg-green-500/95 flex items-center justify-center text-white">
-                                <div className="text-center">
-                                    <h1 className="text-9xl font-black mb-4 italic tracking-tighter">GRANDE!</h1>
+                            <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-[300] bg-green-500/90 flex items-center justify-center text-white text-center">
+                                <div>
+                                    <h1 className="text-9xl font-black italic mb-8">RISOLTA!</h1>
                                     <button onClick={() => { setGameWon(false); setTerms(generateLevel()); }}
-                                            className="bg-white text-green-600 px-16 py-6 rounded-3xl font-black text-3xl shadow-2xl active:translate-y-2 transition-all">AVANTI</button>
+                                            className="bg-white text-green-600 px-16 py-6 rounded-3xl font-black text-3xl shadow-2xl">AVANTI</button>
                                 </div>
                             </motion.div>
                         )}
@@ -215,7 +223,7 @@
             const isL = term.side === 'lhs';
             const pos = useMemo(() => ({
                 x: isL ? 60 + Math.random()*80 : window.innerWidth - 180 - Math.random()*80,
-                y: 200 + Math.random() * (window.innerHeight - 400)
+                y: 220 + Math.random() * (window.innerHeight - 450)
             }), [term.side]);
 
             return (
@@ -228,7 +236,7 @@
                     onDragEnd={(e, info) => onDragEnd(term, info, e.target)}
                     className="absolute w-24 h-24 rounded-[2.2rem] card-shadow flex items-center justify-center text-white text-3xl font-black cursor-grab border-b-8 border-black/20"
                 >
-                    {Math.abs(term.coefficient)}{term.hasVariable ? "x" : ""}
+                    {formatForCard(term.coefficient, term.hasVariable)}
                 </motion.div>
             );
         }
